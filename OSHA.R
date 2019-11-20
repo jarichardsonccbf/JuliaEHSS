@@ -2,19 +2,53 @@ library(readxl)
 library(tidyverse)
 library(lubridate)
 
-osha <- read_excel("data/OSHA Export Example (Jason).xlsx", sheet = "Data") %>% 
-  mutate(month = month(`Loss Date`),
-         year = year(`Loss Date`)) %>% 
-  filter(year == 2019)
+source("locations.R")
 
+osha <- read_excel("data/OSHA Export Example (Jason).xlsx", sheet = "Data") %>% 
+  mutate(month = months(`Loss Date`),
+         year = year(`Loss Date`)) %>% 
+  filter(year == format(Sys.Date(), "%Y"),
+         month == "August") 
+
+if("HEADQUARTERS - HQ" %in% osha$Location == TRUE) {
+  
+  "There is a HQ incident this month. Please convert 'HEADQUARTERS - HQ' to 'HEADQUARTERS - SALES' or 'HEADQUARTERS - ADMIN', save the file, and reupload."
+  
+} else {
+
+osha <- osha%>% 
+  left_join(cbcs.locations, by = c("Location"))
+  
 osha.total <- osha %>% 
-  group_by(Location, month) %>% 
-  summarise(totals = n())
+  group_by(Facility, Section) %>% 
+  summarise(OR = n())
   
 osha.work.loss <- osha %>% 
   filter(`Lost Work Days` > 0) %>% 
-  group_by(Location, month) %>% 
-  summarise(work_loss = n())
+  group_by(Facility, Section) %>% 
+  summarise(LT = n())
 
 osha.count <- osha.total %>% 
-  left_join(osha.work.loss, by = c("Location", "month"))
+  left_join(osha.work.loss, by = c("Facility", "Section"))
+
+osha.count <- osha.count %>% 
+  right_join(cbcs.locations, by = c("Facility", "Section")) %>% 
+  select(-c(Location))
+
+osha.totals <- osha.count %>% 
+  pivot_longer(cols = OR:LT, names_to = "incident.type") %>% 
+  group_by(Facility, incident.type) %>% 
+  summarise(total = sum(value, na.rm = T)) %>% 
+  pivot_wider(names_from = incident.type, values_from = total) %>% 
+  mutate(Section = "A") %>% 
+  select(Facility, Section, OR, LT)
+
+osha.all <- rbind(osha.count, osha.totals) %>%
+  arrange(Facility, Section) %>% 
+  mutate(Section = recode(Section,
+                          "A" = "Total")) %>% 
+  ungroup() 
+ 
+osha.all[osha.all == 0] <- NA
+
+}
