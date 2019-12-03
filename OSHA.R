@@ -7,8 +7,8 @@ source("locations.R")
 osha <- read_excel("data/OSHA Export Example (Jason).xlsx", sheet = "Data") %>% 
   mutate(month = months(`Loss Date`),
          year = year(`Loss Date`)) %>% 
-  filter(year == format(Sys.Date(), "%Y"),
-         month == "August") 
+  filter(year == "2019",
+         month == "October")
 
 if("HEADQUARTERS - HQ" %in% osha$Location == TRUE) {
   
@@ -16,7 +16,7 @@ if("HEADQUARTERS - HQ" %in% osha$Location == TRUE) {
   
 } else {
 
-osha <- osha%>% 
+osha <- osha %>%
   left_join(cbcs.locations, by = c("Location"))
   
 osha.total <- osha %>% 
@@ -52,3 +52,12 @@ osha.all <- rbind(osha.count, osha.totals) %>%
 osha.all[osha.all == 0] <- NA
 
 }
+
+osha.all <- rbind(osha.all,
+osha.all %>% 
+  summarise_at(vars (OR:LT), sum, na.rm = T) %>% 
+  mutate(Facility = "Total",
+         Section = "Total") %>% 
+  select(Facility, Section, OR, LT))
+
+rm(list=ls()[! ls() %in% c("osha.all")])
