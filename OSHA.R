@@ -8,7 +8,7 @@ osha <- read_excel("data/OSHA Export Example (Jason).xlsx", sheet = "Data") %>%
   mutate(month = months(`Loss Date`),
          year = year(`Loss Date`)) %>% 
   filter(year == "2019",
-         month == "October")
+         month == "November")
 
 if("HEADQUARTERS - HQ" %in% osha$Location == TRUE) {
   
@@ -30,10 +30,6 @@ osha.work.loss <- osha %>%
 
 osha.count <- osha.total %>% 
   left_join(osha.work.loss, by = c("Facility", "Section"))
-
-osha.count <- osha.count %>% 
-  right_join(cbcs.locations, by = c("Facility", "Section")) %>% 
-  select(-c(Location))
 
 osha.totals <- osha.count %>% 
   pivot_longer(cols = OR:LT, names_to = "incident.type") %>% 

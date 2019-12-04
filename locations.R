@@ -1,4 +1,4 @@
-# cbcs locations ----
+# cbcs/osha locations ----
 
 cbcs.locations <- data.frame(
   
@@ -223,8 +223,8 @@ cbcs.locations <- data.frame(
     "Tampa PC",
     "Tampa PC",
     "The Keys",
-    "Headquarter",
-    "Headquarter",
+    "Headquarters",
+    "Headquarters",
     "The Keys",
     "The Keys",
     "The Keys",

@@ -78,11 +78,23 @@ ui <- fluidPage(
                  accept = c(".xlsx"), progress = TRUE),
       
       # month and year ----
-      h5("Timeframe"),
-      textInput("month", "Month:", value = months(Sys.Date() %m+% months(-1))),
-      textInput("year", "Year:", value = year(Sys.Date()))
-      
-      
+      h4("Timeframe"),
+      selectInput("month", label = "Month:", 
+                  choices = list(
+                    "January" = "January", 
+                    "February" = "February", 
+                    "March" = "March",
+                    "April" = "April",
+                    "May" = "May",
+                    "June" = "June",
+                    "July" = "July",
+                    "August" = "August",
+                    "September" = "September",
+                    "October" = "October",
+                    "November" = "November",
+                    "December" = "December"), 
+                  selected = months(Sys.Date() %m+% months(-1))),
+        textInput("year", "Year:", value = year(Sys.Date()))
     ),
     
     # Main panel display. Use tabs, one for each slide ----
@@ -92,7 +104,7 @@ ui <- fluidPage(
       
       span(textOutput(outputId = "warning.message"), style = "color:red"),
       
-      uiOutput(outputId = "table")
+      uiOutput(outputId = "hours.table")
                   
       )
       
@@ -103,7 +115,7 @@ server <- function(input, output, session) {
   
   # reporting reactive ----
 
-  report.df <- reactive({
+  hours.df <- reactive({
     req(input$file1)
     
     exempt.hours <- read_excel(input$file1$datapath, sheet = "Sheet1") %>% 
@@ -217,10 +229,6 @@ server <- function(input, output, session) {
       osha.count <- osha.total %>% 
         left_join(osha.work.loss, by = c("Facility", "Section"))
       
-      osha.count <- osha.count %>% 
-        right_join(cbcs.locations, by = c("Facility", "Section")) %>% 
-        select(-c(Location))
-      
       osha.totals <- osha.count %>% 
         pivot_longer(cols = OR:LT, names_to = "incident.type") %>% 
         group_by(Facility, incident.type) %>% 
@@ -275,11 +283,9 @@ server <- function(input, output, session) {
     report.df() %>% 
       flextable() %>% 
       border_remove() %>% 
-      border(border.top = fp_border(color = "black"),
-             border.bottom = fp_border(color = "black"),
-             border.left = fp_border(color = "black"),
-             border.right = fp_border(color = "black"), part = "all") %>% 
-      # flextable formatting
+      bold( i = ~ `Section` == "Total") %>%
+      bg(bg = "#92D050", part = "body", i = ~ `Section` == "Total") %>% 
+      bg(bg = "#FFFF00", part = "body", i = nrow(flextable(report.df())$body$dataset)) %>% 
       htmltools_value()
   })
 }
