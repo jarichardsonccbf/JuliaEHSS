@@ -375,8 +375,19 @@ exempt.locations <- data.frame(
     "Tampa DC",
     "Tampa DC",
     "Tampa DC",
-    "The Keys"
-    
+    "The Keys",
+    "Headquarters",
+    "Orlando Mrc",
+    "Orlando",
+    "Headquarters",
+    "Jacksonville",
+    "Miami Dade",
+    "Broward",
+    "Palm Beach",
+    "Orlando",
+    "Broward",
+    "Jacksonville"
+    # "Palm Beach"
   ),
   
   Section = c(
@@ -482,7 +493,19 @@ exempt.locations <- data.frame(
     "Distribution",
     "Sales",
     "Administration",
-    "Distribution"
+    "Distribution",
+    "Sales",
+    "Sales",
+    "Sales",
+    "Sales",
+    "Sales",
+    "Sales",
+    "Sales",
+    "Sales",
+    "Sales",
+    "Sales",
+    "Sales"
+    # "Administration"
     
   ),
   
@@ -589,7 +612,19 @@ exempt.locations <- data.frame(
     "Tampa, FL",
     "Tampa, FL",
     "Tampa, FL",
-    "The Keys, FL"
+    "The Keys, FL",
+    "Headquarter Office",
+    "Orlando Field Servic",
+    "Orlando, FL",
+    "Headquarter Office",
+    "Jacksonville, FL",
+    "Miami-Dade, FL",
+    "Broward, FL",
+    "Palm Beach, FL",
+    "Orlando, FL",
+    "Broward, FL",
+    "Jacksonville, FL"
+    # "Palm Beach, FL"
     
   ),
   
@@ -696,12 +731,28 @@ exempt.locations <- data.frame(
     "Franchise Field Operations",
     "Marketing",
     "Corporate HR & Ops",
-    "Franchise Field Operations"
+    "Franchise Field Operations",
+    "Customer Management – Retail",
+    "Customer Management – FSOP",
+    "Customer Management – FSOP",
+    "Customer Management – FSOP",
+    "Customer Management – Retail",
+    "Customer Management – FSOP",
+    "Customer Management – FSOP",
+    "Customer Management – Retail",
+    "Customer Management – Retail",
+    "Customer Management – Retail",
+    "Customer Management – FSOP"
+    # "Business Services and Systems"
     
   )
   
 )
 
+exempt.locations <- exempt.locations %>% 
+  mutate(L4.Org.Unit.Name = as.character(L4.Org.Unit.Name))
+
+Encoding(exempt.locations$L4.Org.Unit.Name) <- "UTF-8"
 
 # nonexempt locations ----
 

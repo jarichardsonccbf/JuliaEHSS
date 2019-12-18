@@ -4,7 +4,7 @@ library(lubridate)
 library(readxl)
 library(flextable)
 library(officer)
-# library(xlsx)
+library(xlsx)
 
 options(shiny.maxRequestSize=30*1024^2)
 
@@ -102,7 +102,10 @@ ui <- fluidPage(
       
       h2("Upload the specified data to the left, copy and paste the output into the Monthly Hours Report spreadsheet", align = "center"),
       
-      span(textOutput(outputId = "warning.message"), style = "color:red"),
+      span(
+        textOutput(outputId = "warning.message"), style = "color:red"),
+      uiOutput(outputId = "missing.section"), 
+      
       
       splitLayout(
         
@@ -123,8 +126,8 @@ server <- function(input, output, session) {
   hours.df <- reactive({
     req(input$file1)
     
-    exempt.hours <- read_excel(input$file1$datapath, sheet = "Sheet1") %>% 
-      left_join(exempt.locations, by = c("L4 Org Unit Name", "Personnel Area Desc")) %>% 
+    facility.section.hours <- read_excel(input$file1$datapath, sheet = "Sheet1") %>% 
+      full_join(exempt.locations, by = c("L4 Org Unit Name", "Personnel Area Desc")) %>% 
       group_by(Facility, Section) %>% 
       summarise(`Hours worked` = sum(`Total Hours`, na.rm = T)) %>% 
       drop_na()
@@ -133,31 +136,30 @@ server <- function(input, output, session) {
       select(-c(`L4 Org Unit Name`, `Personnel Area Desc`)) %>% 
       unique()
     
-    all.loc <- exempt.hours %>%  
+    facility.section.hours <- facility.section.hours %>%  
       right_join(all.loc, by = c("Facility", "Section"))
     
-    exempt.totals <- all.loc %>% 
+    facility.totals <- facility.section.hours %>% 
       group_by(Facility) %>% 
       summarise(`Hours worked` = sum(`Hours worked`, na.rm = T)) %>% 
       mutate(Section = "A") %>% 
       select(Facility, Section, `Hours worked`) %>% 
       mutate(Section = as.factor(Section))
     
-    exempt.all <- bind_rows(exempt.totals, all.loc) %>%
+    state.total <- facility.totals %>% 
+      summarise(`Hours worked` = sum(`Hours worked`, na.rm = T)) %>% 
+      mutate(Facility = "Total",
+             Section = "Total") %>% 
+      select(Facility, Section, `Hours worked`)
+    
+    
+    exempt.all <- bind_rows(facility.totals, facility.section.hours, state.total) %>%
       arrange(Facility, Section) %>% 
       mutate(Section = recode(Section,
                               "A" = "Total")) %>% 
       ungroup() 
     
     exempt.all[exempt.all == 0] <- NA
-    
-    exempt.all <- rbind(as.data.frame(exempt.all),
-                        exempt.all %>% 
-                          ungroup() %>% 
-                          summarise(`Hours worked` = sum(`Hours worked`, na.rm = T)) %>% 
-                          mutate(Facility = "Total",
-                                 Section = "Total") %>% 
-                          select(Facility, Section, `Hours worked`))
 
     
     req(input$file2)
@@ -171,26 +173,24 @@ server <- function(input, output, session) {
       mutate(Cost.Center.Desc. = as.factor(Cost.Center.Desc.)) %>% 
       left_join(non.exempt.locations, by = "Cost.Center.Desc.")
     
-    non.exempt.hours <- non.exempt %>% 
+    facility.section.totals <- non.exempt %>% 
       group_by(Facility, Section) %>% 
       summarise(`Hours worked` = sum(Hours))
     
-    all.loc <- non.exempt.locations %>% 
-      select(-c(Cost.Center.Desc.)) %>% 
-      unique()
-    
-    all.loc <- non.exempt.hours %>%  
-      right_join(all.loc, by = c("Facility", "Section"))
-    
-    
-    non.exempt.totals <- all.loc %>% 
+    facility.totals <- facility.section.totals %>% 
       group_by(Facility) %>% 
       summarise(`Hours worked` = sum(`Hours worked`, na.rm = T)) %>% 
       mutate(Section = "A") %>% 
       select(Facility, Section, `Hours worked`) %>% 
       mutate(Section = as.factor(Section))
     
-    non.exempt.all <- bind_rows(non.exempt.totals, all.loc) %>%
+    state.total <- facility.totals %>% 
+      summarise(`Hours worked` = sum(`Hours worked`, na.rm = T)) %>% 
+      mutate(Facility = "Total",
+             Section = "Total") %>% 
+      select(Facility, Section, `Hours worked`)
+    
+    non.exempt.all <- bind_rows(facility.totals, facility.section.totals, state.total) %>%
       arrange(Facility, Section) %>% 
       mutate(Section = recode(Section,
                               "A" = "Total")) %>% 
@@ -198,83 +198,88 @@ server <- function(input, output, session) {
     
     non.exempt.all[non.exempt.all == 0] <- NA
     
-    non.exempt.all <- rbind(as.data.frame(non.exempt.all),
-                            non.exempt.all %>% 
-                              ungroup() %>% 
-                              summarise(`Hours worked` = sum(`Hours worked`, na.rm = T)) %>% 
-                              mutate(Facility = "Total",
-                                     Section = "Total") %>% 
-                              select(Facility, Section, `Hours worked`))
-    
     
     # req(input$file3)
     
     # file 3 stuff
     
     # Join them and get output df
+   
     
-    req(input$file4)
-    
-    osha <- read_excel(input$file4$datapath, sheet = "Data") %>% 
-      mutate(month = months(`Loss Date`),
-             year = year(`Loss Date`)) %>% 
-      filter(year == input$year,
-             month == input$month) %>%
-        left_join(cbcs.locations, by = c("Location"))
-      
-      osha.total <- osha %>% 
-        group_by(Facility, Section) %>% 
-        summarise(OR = n())
-      
-      osha.work.loss <- osha %>% 
-        filter(`Lost Work Days` > 0) %>% 
-        group_by(Facility, Section) %>% 
-        summarise(LT = n())
-      
-      osha.count <- osha.total %>% 
-        left_join(osha.work.loss, by = c("Facility", "Section"))
-      
-      osha.totals <- osha.count %>% 
-        pivot_longer(cols = OR:LT, names_to = "incident.type") %>% 
-        group_by(Facility, incident.type) %>% 
-        summarise(total = sum(value, na.rm = T)) %>% 
-        pivot_wider(names_from = incident.type, values_from = total) %>% 
-        mutate(Section = "A") %>% 
-        select(Facility, Section, OR, LT)
-      
-      osha.all <- rbind(osha.count, osha.totals) %>%
-        arrange(Facility, Section) %>% 
-        mutate(Section = recode(Section,
-                                "A" = "Total")) %>% 
-        ungroup() 
-      
-      osha.all[osha.all == 0] <- NA
-    
-    osha.all <- rbind(osha.all,
-                      osha.all %>% 
-                        summarise_at(vars (OR:LT), sum, na.rm = T) %>% 
-                        mutate(Facility = "Total",
-                               Section = "Total") %>% 
-                        select(Facility, Section, OR, LT))
-    
-    osha.exempt.non <- non.exempt.all %>% 
-      full_join(exempt.all, by = c("Facility", "Section")) %>% 
+    monthly <- non.exempt.all %>%
+      full_join(exempt.all, by = c("Facility", "Section")) %>%
       replace(is.na(.), 0) %>%
-      mutate(`Hours worked` = `Hours worked.x` + `Hours worked.y`) %>% 
-      select(-c(`Hours worked.x`, `Hours worked.y`)) %>% 
-      full_join(osha.all, by = c("Facility", "Section")) %>% 
-      arrange(Facility) %>%
-      select(Facility, Section, `Hours worked`)
+      mutate(`Hours worked` = `Hours worked.x` + `Hours worked.y`) %>%
+      select(-c(`Hours worked.x`, `Hours worked.y`)) %>%
+      arrange(Facility)
 
   })
+  
+  missing.df <- reactive({
+    
+    req(input$file1)
+    
+    missing <- read_excel(input$file1$datapath, sheet = "Sheet1") %>% 
+      full_join(exempt.locations, by = c("L4 Org Unit Name", "Personnel Area Desc")) %>% 
+      select(`L4 Org Unit Name`, `Personnel Area Desc`, Facility, Section) %>% 
+      unique() %>% 
+      subset(is.na(Facility)) %>% 
+      ungroup() %>% 
+      select(-c(Facility, Section)) %>% 
+      drop_na() %>% 
+      mutate(WARNING = "Notify Jason of new field") %>% 
+      select(WARNING, `L4 Org Unit Name`, `Personnel Area Desc`)
+    
+    if (nrow(missing) == 0) {
+      
+      missing <- data.frame(`All locations appear to be coded for` = character()) %>% 
+        rename(`All locations appear to be coded for` = All.locations.appear.to.be.coded.for)
+      
+      missing <- as.data.frame(missing)
+      
+    } else {
+      
+      missing <- as.data.frame(missing) 
+      
+    }
+    
+    
+  })
+  
+  output$missing.section <- renderUI(
+    
+    if (nrow(missing.df()) == 0) {
+      
+      missing.df() %>%
+        flextable() %>%
+        bg(bg = "green", part = "all") %>% 
+        htmltools_value()
+      
+    } else {
+      
+      missing.df() %>%
+        flextable() %>%
+        bg(bg = "red", part = "all", j = 1) %>%
+        align(align = "center", part = "all" ) %>% 
+        htmltools_value()
+
+    }
+    
+  )
   
   output$warning.message <- renderText({
     
     req(input$file4)
     
-    osha <- read_excel(input$file4$datapath, sheet = "Data") %>% 
-      mutate(month = months(`Loss Date`),
-             year = year(`Loss Date`)) %>% 
+    osha <- read_excel(input$file4$datapath, sheet = "Data")
+    osha <- osha[-1:-2,]
+    
+    names(osha) <- as.matrix(osha[1, ])
+    osha <- osha[-1, ]
+    
+    osha <- osha %>% 
+      mutate(month = months(as.Date(as.numeric(osha$`Loss Date`), origin = '1899-12-30')),
+             year = year(as.Date(as.numeric(osha$`Loss Date`), origin = '1899-12-30'))) %>% 
       filter(year == input$year,
              month == input$month)
     
@@ -300,8 +305,8 @@ server <- function(input, output, session) {
     
     req(input$file1)
     
-    exempt.hours <- read_excel(input$file1$datapath, sheet = "Sheet1") %>% 
-      left_join(exempt.locations, by = c("L4 Org Unit Name", "Personnel Area Desc")) %>% 
+    facility.section.hours <- read_excel(input$file1$datapath, sheet = "Sheet1") %>% 
+      full_join(exempt.locations, by = c("L4 Org Unit Name", "Personnel Area Desc")) %>% 
       group_by(Facility, Section) %>% 
       summarise(`Hours worked` = sum(`Total Hours`, na.rm = T)) %>% 
       drop_na()
@@ -310,31 +315,30 @@ server <- function(input, output, session) {
       select(-c(`L4 Org Unit Name`, `Personnel Area Desc`)) %>% 
       unique()
     
-    all.loc <- exempt.hours %>%  
+    facility.section.hours <- facility.section.hours %>%  
       right_join(all.loc, by = c("Facility", "Section"))
     
-    exempt.totals <- all.loc %>% 
+    facility.totals <- facility.section.hours %>% 
       group_by(Facility) %>% 
       summarise(`Hours worked` = sum(`Hours worked`, na.rm = T)) %>% 
       mutate(Section = "A") %>% 
       select(Facility, Section, `Hours worked`) %>% 
       mutate(Section = as.factor(Section))
     
-    exempt.all <- bind_rows(exempt.totals, all.loc) %>%
+    state.total <- facility.totals %>% 
+      summarise(`Hours worked` = sum(`Hours worked`, na.rm = T)) %>% 
+      mutate(Facility = "Total",
+             Section = "Total") %>% 
+      select(Facility, Section, `Hours worked`)
+    
+    
+    exempt.all <- bind_rows(facility.totals, facility.section.hours, state.total) %>%
       arrange(Facility, Section) %>% 
       mutate(Section = recode(Section,
                               "A" = "Total")) %>% 
       ungroup() 
     
     exempt.all[exempt.all == 0] <- NA
-    
-    exempt.all <- rbind(as.data.frame(exempt.all),
-                        exempt.all %>% 
-                          ungroup() %>% 
-                          summarise(`Hours worked` = sum(`Hours worked`, na.rm = T)) %>% 
-                          mutate(Facility = "Total",
-                                 Section = "Total") %>% 
-                          select(Facility, Section, `Hours worked`))
     
     
     req(input$file2)
@@ -348,41 +352,30 @@ server <- function(input, output, session) {
       mutate(Cost.Center.Desc. = as.factor(Cost.Center.Desc.)) %>% 
       left_join(non.exempt.locations, by = "Cost.Center.Desc.")
     
-    non.exempt.hours <- non.exempt %>% 
+    facility.section.totals <- non.exempt %>% 
       group_by(Facility, Section) %>% 
       summarise(`Hours worked` = sum(Hours))
     
-    all.loc <- non.exempt.locations %>% 
-      select(-c(Cost.Center.Desc.)) %>% 
-      unique()
-    
-    all.loc <- non.exempt.hours %>%  
-      right_join(all.loc, by = c("Facility", "Section"))
-    
-    
-    non.exempt.totals <- all.loc %>% 
+    facility.totals <- facility.section.totals %>% 
       group_by(Facility) %>% 
       summarise(`Hours worked` = sum(`Hours worked`, na.rm = T)) %>% 
       mutate(Section = "A") %>% 
       select(Facility, Section, `Hours worked`) %>% 
       mutate(Section = as.factor(Section))
     
-    non.exempt.all <- bind_rows(non.exempt.totals, all.loc) %>%
+    state.total <- facility.totals %>% 
+      summarise(`Hours worked` = sum(`Hours worked`, na.rm = T)) %>% 
+      mutate(Facility = "Total",
+             Section = "Total") %>% 
+      select(Facility, Section, `Hours worked`)
+    
+    non.exempt.all <- bind_rows(facility.totals, facility.section.totals, state.total) %>%
       arrange(Facility, Section) %>% 
       mutate(Section = recode(Section,
                               "A" = "Total")) %>% 
       ungroup() 
     
     non.exempt.all[non.exempt.all == 0] <- NA
-    
-    non.exempt.all <- rbind(as.data.frame(non.exempt.all),
-                            non.exempt.all %>% 
-                              ungroup() %>% 
-                              summarise(`Hours worked` = sum(`Hours worked`, na.rm = T)) %>% 
-                              mutate(Facility = "Total",
-                                     Section = "Total") %>% 
-                              select(Facility, Section, `Hours worked`))
-    
     
     # req(input$file3)
     
@@ -392,26 +385,36 @@ server <- function(input, output, session) {
     
     req(input$file4)
     
-    osha <- read_excel(input$file4$datapath, sheet = "Data") %>% 
-      mutate(month = months(`Loss Date`),
-             year = year(`Loss Date`)) %>% 
+    osha <- read_excel(input$file4$datapath, sheet = "Data")
+    osha <- osha[-1:-2,]
+    
+    names(osha) <- as.matrix(osha[1, ])
+    osha <- osha[-1, ]
+    
+    osha <- osha %>% 
+      mutate(month = months(as.Date(as.numeric(osha$`Loss Date`), origin = '1899-12-30')),
+             year = year(as.Date(as.numeric(osha$`Loss Date`), origin = '1899-12-30'))) %>% 
       filter(year == input$year,
-             month == input$month) %>%
+             month == input$month)
+    
+    
+    osha <- osha %>%
       left_join(cbcs.locations, by = c("Location"))
     
-    osha.total <- osha %>% 
+    facility.section.or <- osha %>% 
       group_by(Facility, Section) %>% 
       summarise(OR = n())
     
-    osha.work.loss <- osha %>% 
+    facility.section.lt <- osha %>% 
       filter(`Lost Work Days` > 0) %>% 
       group_by(Facility, Section) %>% 
       summarise(LT = n())
     
-    osha.count <- osha.total %>% 
-      left_join(osha.work.loss, by = c("Facility", "Section"))
+    facility.section <- facility.section.or %>% 
+      left_join(facility.section.lt, by = c("Facility", "Section"))
     
-    osha.totals <- osha.count %>% 
+    facility.totals <- facility.section %>%
+      droplevels() %>% 
       pivot_longer(cols = OR:LT, names_to = "incident.type") %>% 
       group_by(Facility, incident.type) %>% 
       summarise(total = sum(value, na.rm = T)) %>% 
@@ -419,7 +422,20 @@ server <- function(input, output, session) {
       mutate(Section = "A") %>% 
       select(Facility, Section, OR, LT)
     
-    osha.all <- rbind(osha.count, osha.totals) %>%
+    state.totals <- facility.totals %>%
+      ungroup() %>% 
+      summarise_at(vars (OR:LT), sum, na.rm = T) %>%
+      mutate(Facility = "Total",
+             Section = "Total") %>% 
+      select(Facility, Section, OR, LT)
+    
+    
+    
+    facility.section <- as.data.frame(facility.section)
+    facility.totals <- as.data.frame(facility.totals)
+    state.totals <- as.data.frame(state.totals)
+    
+    osha.all <- rbind(facility.totals, facility.section, state.totals) %>%
       arrange(Facility, Section) %>% 
       mutate(Section = recode(Section,
                               "A" = "Total")) %>% 
@@ -427,19 +443,13 @@ server <- function(input, output, session) {
     
     osha.all[osha.all == 0] <- NA
     
-    osha.all <- rbind(osha.all,
-                      osha.all %>% 
-                        summarise_at(vars (OR:LT), sum, na.rm = T) %>% 
-                        mutate(Facility = "Total",
-                               Section = "Total") %>% 
-                        select(Facility, Section, OR, LT))
     
-    osha.exempt.non <- non.exempt.all %>% 
-      full_join(exempt.all, by = c("Facility", "Section")) %>% 
+    monthly <- non.exempt.all %>%
+      full_join(exempt.all, by = c("Facility", "Section")) %>%
       replace(is.na(.), 0) %>%
-      mutate(`Hours worked` = `Hours worked.x` + `Hours worked.y`) %>% 
-      select(-c(`Hours worked.x`, `Hours worked.y`)) %>% 
-      full_join(osha.all, by = c("Facility", "Section")) %>% 
+      mutate(`Hours worked` = `Hours worked.x` + `Hours worked.y`) %>%
+      select(-c(`Hours worked.x`, `Hours worked.y`)) %>%
+      full_join(osha.all, by = c("Facility", "Section")) %>%
       arrange(Facility) %>%
       select(Facility, Section, OR, LT)
 

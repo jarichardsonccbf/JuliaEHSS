@@ -4,34 +4,36 @@ library(lubridate)
 
 source("locations.R")
 
-osha <- read_excel("data/OSHA Export Example (Jason).xlsx", sheet = "Data") %>% 
-  mutate(month = months(`Loss Date`),
-         year = year(`Loss Date`)) %>% 
+osha <- read_excel("data/OSHAnov19.xlsx", sheet = "Data")
+osha <- osha[-1:-2,]
+
+names(osha) <- as.matrix(osha[1, ])
+osha <- osha[-1, ]
+
+osha <- osha %>% 
+  mutate(month = months(as.Date(as.numeric(osha$`Loss Date`), origin = '1899-12-30')),
+         year = year(as.Date(as.numeric(osha$`Loss Date`), origin = '1899-12-30'))) %>% 
   filter(year == "2019",
          month == "November")
 
-if("HEADQUARTERS - HQ" %in% osha$Location == TRUE) {
-  
-  "There is a HQ incident this month. Please convert 'HEADQUARTERS - HQ' to 'HEADQUARTERS - SALES' or 'HEADQUARTERS - ADMIN', save the file, and reupload."
-  
-} else {
 
 osha <- osha %>%
   left_join(cbcs.locations, by = c("Location"))
   
-osha.total <- osha %>% 
+facility.section.or <- osha %>% 
   group_by(Facility, Section) %>% 
   summarise(OR = n())
   
-osha.work.loss <- osha %>% 
+facility.section.lt <- osha %>% 
   filter(`Lost Work Days` > 0) %>% 
   group_by(Facility, Section) %>% 
   summarise(LT = n())
 
-osha.count <- osha.total %>% 
-  left_join(osha.work.loss, by = c("Facility", "Section"))
+facility.section <- facility.section.or %>% 
+  left_join(facility.section.lt, by = c("Facility", "Section"))
 
-osha.totals <- osha.count %>% 
+facility.totals <- facility.section %>%
+  droplevels() %>% 
   pivot_longer(cols = OR:LT, names_to = "incident.type") %>% 
   group_by(Facility, incident.type) %>% 
   summarise(total = sum(value, na.rm = T)) %>% 
@@ -39,21 +41,25 @@ osha.totals <- osha.count %>%
   mutate(Section = "A") %>% 
   select(Facility, Section, OR, LT)
 
-osha.all <- rbind(osha.count, osha.totals) %>%
+state.totals <- facility.totals %>%
+  ungroup() %>% 
+  summarise_at(vars (OR:LT), sum, na.rm = T) %>%
+  mutate(Facility = "Total",
+         Section = "Total") %>% 
+  select(Facility, Section, OR, LT)
+
+rm(list=ls()[! ls() %in% c("facility.section", "facility.totals", "state.totals")])
+
+facility.section <- as.data.frame(facility.section)
+facility.totals <- as.data.frame(facility.totals)
+state.totals <- as.data.frame(state.totals)
+
+osha.all <- rbind(facility.totals, facility.section, state.totals) %>%
   arrange(Facility, Section) %>% 
   mutate(Section = recode(Section,
                           "A" = "Total")) %>% 
   ungroup() 
  
 osha.all[osha.all == 0] <- NA
-
-}
-
-osha.all <- rbind(osha.all,
-osha.all %>% 
-  summarise_at(vars (OR:LT), sum, na.rm = T) %>% 
-  mutate(Facility = "Total",
-         Section = "Total") %>% 
-  select(Facility, Section, OR, LT))
 
 rm(list=ls()[! ls() %in% c("osha.all")])
